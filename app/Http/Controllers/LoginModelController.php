@@ -10,6 +10,7 @@ use Twilio\Rest\Client;
 use DB;
 use Illuminate\Support\Facades\Schema;
 use Twilio\TwiML\MessagingResponse;
+
 class LoginModelController extends Controller
 {
 
@@ -27,7 +28,7 @@ class LoginModelController extends Controller
 
     public function verify_access_token($unique_id,$token)
     {
-        $data = DB::table('registered_users')->whwre('user_unique_id',$unique_id)->where('access_token',$token)-get();
+        $data = DB::table('registered_users')->where('user_unique_id',$unique_id)->where('access_token',$token)->get();
         if(count($data) > 0){
             return 1;
         }else{
@@ -35,14 +36,27 @@ class LoginModelController extends Controller
         }
     }
 
+    public function sendSMS($toNumber, $code){
+        $sid    = 'AC6804451da956c941dd88226a0f2c3847';
+        $token  = '7984c5a2a90cc31d6288c167f1258644'; 
+        $from_phone_number  = '+1 918 376 7404';
+        
+        $client = new Client($sid, $token);
+        $client->messages->create(
+            // Where to send a text message (your cell phone?)
+            "+91".$toNumber,
+            array(
+                'from' => $from_phone_number,
+                "body" => "Your Nute Verification Code is"." ".$code,
+            )
+        );
+    }
+
     
 
     public function storeAdmin(Request $request){
         $code = rand(1000,9999);
-        
-
         $validator = Validator::make($request->all(),[
-            // 'email' => 'required|unique:registered_users',
             'phone' => 'required|unique:registered_users',
         ]);
         if ($validator->fails()) {
@@ -51,34 +65,19 @@ class LoginModelController extends Controller
                 'key' => 0,
             ];
             return response()->json($validator->errors(), 400);
-        //    return json_encode($response);
         }
         else {
             $data = array(
-                // 'email'=>  $request->email,
                 'phone' => $request->phone,
                 'code' => $code,
             );
-        $to_phone_number = $request->phone;
-        $sid    = getenv("TWILIO_SID");
-        $token  = getenv("TWILIO_AUTH_TOKEN"); 
-        $from_phone_number  =  getenv("TWILIO_NUMBER");
-        $msg_service_id  =  getenv("TWILIO_SERVICE_ID");
-        $twilio = new Client($sid, $token);
-        $message = $twilio->messages
-        ->create("+91".$to_phone_number, // to
-        [
-            "body" => "Your Nute Verification Code is".$code,
-            "from" => $from_phone_number,
-           
-        ]
-        );
+            $toNumber = $request->phone;        
+            $this->sendSMS($toNumber,$code);
         $response = [
             'message' => "Verification Code Sent Successfully",
             'key' => 1,
         ];
-        // echo $response;
-        // print($message->status);
+
          $insert = $this->model->adminAdd($data);
          return $response;
     }
@@ -111,18 +110,17 @@ class LoginModelController extends Controller
                     $response = [
                         'message' => 'Verification Done Succesfully!',
                         'key' => 1,
-                        'user_unique_id' => $verified,
+                        'user_unique_id' => $verified['user_unique_id'],
+                        'access_token' => $verified['access_token'],
                     ];
                     return json_encode($response);
                 }
             } 
             elseif($request->flag == 'S'){
-
                     $data = [
                         'code' => $request->code,
                         'phone' => $request->phone,
-                    ];
-                    
+                    ];      
                     $verified = $this->model->verfiyCode_for_signup($data);
                     if($verified == 0){
                         $response = [
@@ -146,6 +144,7 @@ class LoginModelController extends Controller
                             'message' => 'Verification Done Succesfully!',
                             'key' => 1,
                             'access_token' => $register_data['access_token'],
+                             'adminId' => $register_data['user_unique_id'],
                         ];
 
                         return json_encode($response);
@@ -155,65 +154,15 @@ class LoginModelController extends Controller
         }
  }
 
-
-/* public function add_user_as_registerd(Request $request)
- {
-     $validator = Validator::make($request->All(),
-        [     
-            'name'=> 'required',
-            'mobile_number'=>'required',
-            'email'=>'required'
-        ]);
-
-        if($validator->fails()){
-            return response()->json($validator->errors(), 400);
-        } else {
-            $data =array(
-                'code' => $request->code,
-                'number' => $request->number,
-                'name' => $request->name,
-                'email' => $request->email
-            );
-            $register = $this->model->insert_data_into_registerd($data);
-
-            if($register){
-                $response = [
-                    'message' => 'User Registered Successfully',
-                    'key' => 1,
-                ];
-                return json_encode($response);
-            } else{
-                $response = [
-                    'message' => 'Oops Something went wrong try after some time',
-                    'key' => 0,
-                ];
-                return json_encode($response);
-            }
-        }
- }*/
-
-
-
 public function login(Request $request){
             $code = rand(1000,9999);
             $phone = $request->phone;
             
             $check = $this->model->check_user($phone, $code);
             if($check === 1){
-                $to_phone_number = $request->phone;
-                $sid    = getenv("TWILIO_SID");
-                $token  = getenv("TWILIO_AUTH_TOKEN"); 
-                $from_phone_number  =  getenv("TWILIO_NUMBER");
-                $msg_service_id  =  getenv("TWILIO_SERVICE_ID");
-                $twilio = new Client($sid, $token);
-                $message = $twilio->messages
-                ->create("+91".$to_phone_number, // to
-                [
-                    "body" => "Your Nute Verification Code is".$code,
-                    "from" => $from_phone_number,
-                    
-                ]
-                );
+                $toNumber = $request->phone;
+                $this->sendSMS($toNumber,$code);
+                
                 $response = [
                     'message' => "Verification Code Sent Successfully",
                     'key' => 1,
@@ -243,7 +192,7 @@ public function storeGroup(Request $request){
         $Gdesc = $jsondata['group_desc'];
         $tableCode = $jsondata['createdby'];
         $members = $jsondata['members'];
-        $access_token = $_GET['access_token'];
+        $access_token = $request->header('access_token');
 
     $access_token_verification = $this->verify_access_token($tableCode,$access_token);
    
@@ -298,9 +247,7 @@ public function storeGroup(Request $request){
 
         public function allMembers(Request $request){
             $tableCode = $request->adminId;
-            $access_token = $_GET['access_token'];
-
-
+            $access_token = $request->header('access_token');
             $access_token_verification = $this->verify_access_token($tableCode,$access_token);
 
             if($access_token_verification == 1)
@@ -335,8 +282,7 @@ public function storeGroup(Request $request){
         public function allGroups(Request $request){
             $tableCode = $request->adminId;
 
-            $access_token = $_GET['access_token'];
-
+            $access_token = $request->header('access_token');
             $access_token_verification = $this->verify_access_token($tableCode,$access_token);
             if($access_token_verification == 1)
             {
@@ -364,6 +310,50 @@ public function storeGroup(Request $request){
                     return json_encode($response);
             }
             
+        }
+
+
+
+        public function add_single_member_to_group(Request $request)
+        {
+            $today = date("Y-m-d H:i:s");  
+            $jsondata =    $request->json()->all();
+
+            $access_token = $_GET['access_token'];
+
+            $group_id = $jsondata['group_id'];
+            $tableCode = $jsondata['createdby'];
+            $members = $jsondata['members'];
+
+            $access_token_verification = $this->verify_access_token($tableCode,$access_token);
+            if($access_token_verification == 1)
+            {
+                foreach ($members as $key => $member) {
+                    $member_data = array(
+                        'id' => null,
+                        'group_id' =>   $group_id,
+                        'member_name' => $member['Name'],
+                        'member_number' => $member['phone'],
+                        'created_at'    => $today,
+                        'updated_at'    => $today,
+                    );
+                        $insert_member = $this->model->insert_member_to_group($tableCode,$member_data);
+                }
+
+                $response = [
+                            'message' => 'Member Added Successfully',
+                            'key'=> 1,
+                        ];
+
+                    return $response;
+            } else{
+                $response = [
+                            'message' => 'Incorrect Access Token',
+                            'key'=> 0,
+                        ];
+
+                    return json_encode($response);
+            }
         }
      
 
